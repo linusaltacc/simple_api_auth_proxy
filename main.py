@@ -74,6 +74,36 @@ def log_invalid_api_usage(api_key, endpoint, request_headers="none", request_bod
         except Exception as e:
             logging.error(f"Error writing to invalid_api_usage.csv: {e}")
 
+# Function to get the API usage logs
+@app.api_route("/api_usage", methods=["GET"])
+async def get_api_usage(request: Request):
+    authorization: str = request.headers.get("Authorization", "")
+    if not authorization.startswith("Bearer "):
+        log_invalid_api_usage(api_key="no_api_key", endpoint="/validate")
+        return Response("Invalid API Key format", status_code=400, headers={"Proxy-Status": "invalid_api_key_format"})
+
+    api_key = authorization[7:]  # Remove the 'Bearer ' prefix
+    
+    if api_key in VALID_API_KEYS.values():
+        # Log API usage after successful validation
+            log_file_path = "./api_usage.csv"
+            try:
+                with log_lock:
+                    with open(log_file_path, mode="r", newline='') as csvfile:
+                        reader = csv.reader(csvfile)
+                        # Skipping header row, adjust if your CSV doesn't have one
+                        next(reader, None)
+                        entries = [{"timestamp": row[0], "username": row[1], "endpoint": row[3], "request_header": row[4], "request_body": row[5]} for row in reader]
+                log_api_usage(api_key, "/api_usage")
+                return JSONResponse({"data" : entries}, status_code=200) # Return usage data.
+            except Exception as e:
+                logging.error(f"Error reading from api_usage.csv: {e}")
+                raise HTTPException(status_code=500, detail="Failed to read usage data")
+            
+    else:
+        log_invalid_api_usage(api_key, "/api_usage")
+        return Response("Invalid API Key", status_code=401, headers={"Proxy-Status": "invalid_api_key"})
+
 @app.api_route("/{path:path}", methods=["GET"])
 def CUSTOM_ENDPOINT(request: Request):
     authorization: str = request.headers.get("Authorization", "")
